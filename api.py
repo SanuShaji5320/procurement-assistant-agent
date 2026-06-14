@@ -58,7 +58,7 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
     
 #__History Endpoint ______________________________________
-@app.get("history/{thread_id}")
+@app.get("/history/{thread_id}")
 async def get_history(thread_id: str):
     try:
         config = {"configurable": {"thread_id": thread_id}}
