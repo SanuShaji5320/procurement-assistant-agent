@@ -219,6 +219,8 @@ async def run_agent():
 
 import selectors
 
+# Module-level graph for API use (no checkpointer — stateless)
+graph = builder.compile()
 if __name__ == "__main__":
     loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
     asyncio.set_event_loop(loop)
