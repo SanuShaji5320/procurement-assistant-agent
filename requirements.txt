@@ -5,6 +5,7 @@ langchain-google-genai==4.2.3
 langgraph==1.2.2
 langgraph-checkpoint-postgres
 psycopg[binary,pool]
+psycopg2-binary
 sqlalchemy==2.0.39
 pydantic
 google-generativeai
