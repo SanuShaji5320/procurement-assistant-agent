@@ -7,7 +7,9 @@ from typing_extensions import TypedDict
 import operator
 from dotenv import load_dotenv
 load_dotenv()
-DB_URL = os.getenv("DATABASE_URL")
+DB_URL = os.getenv("DATABASE_URL", "")
+if DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -31,21 +33,48 @@ llm = ChatGoogleGenerativeAI(
 )
 
 #Node 1 _____Route Intent____________________________________
-def route_intent(state: AgentState) -> dict:
-    message = state["user_message"].lower()
-    has_history = len(state.get("messages",[])) > 0
+async def route_intent(state: AgentState) -> dict:
+    message = state["user_message"]
+    has_history = len(state.get("messages", [])) > 0
 
-    if "supplier" in message or "vendor" in message:
-        intent = "find_supplier"
-    elif "shipment" in message or "order" in message or "track" in message:
-        intent = "check_shipment"
-    elif has_history:
-        intent = "follow_up"
-    else:
-        intent = "unknown"
+    classification_prompt = f"""You are an intent classifier for a procurement assistant.
+Classify the user message into exactly one of these intents:
 
-    return {"intent": intent,
-            "messages" : [{"role": "user", "content": state["user_message"]}]}
+- find_supplier: user wants to find, discover, or get recommendations for suppliers or vendors
+- check_shipment: user wants to track, check status, or get updates on a shipment or order
+- follow_up: user is asking a follow-up question related to previous conversation
+- unknown: message doesn't relate to suppliers or shipments
+
+User message: "{message}"
+Has conversation history: {has_history}
+
+Reply with only one word — the intent label. Nothing else."""
+
+    try:
+        response = await llm.ainvoke([HumanMessage(content=classification_prompt)])
+        intent = response.content.strip().lower()
+
+        # Validate — fallback if LLM returns unexpected value
+        valid_intents = {"find_supplier", "check_shipment", "follow_up", "unknown"}
+        if intent not in valid_intents:
+            intent = "follow_up" if has_history else "unknown"
+
+    except Exception:
+        # If LLM call fails, fall back to keyword matching
+        msg = message.lower()
+        if "supplier" in msg or "vendor" in msg:
+            intent = "find_supplier"
+        elif "shipment" in msg or "order" in msg or "track" in msg:
+            intent = "check_shipment"
+        elif has_history:
+            intent = "follow_up"
+        else:
+            intent = "unknown"
+
+    return {
+        "intent": intent,
+        "messages": [{"role": "user", "content": message}]
+    }
 
 #Node 2 ______Find Supplier _________________________________
 async def find_supplier_node(state: AgentState) -> dict:
