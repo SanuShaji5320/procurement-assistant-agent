@@ -1,27 +1,66 @@
+import os
 import asyncio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from agent2 import graph, AgentState
+from dotenv import load_dotenv
+load_dotenv()
 
-#App_______________________________________________
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from agent2 import builder, AgentState
+
+# App_______________________________________________
 app = FastAPI(
     title="Procurement Assistant API",
     description="Agentic AI procurement assistant - supplier discovery and shipment tracking",
     version="2.0"
 )
 
+from contextlib import asynccontextmanager
 
-#Health Check_______________________________________
+DB_URL = os.getenv("DATABASE_URL", "")
+if DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+
+# Global graph reference____________________________
+pg_graph = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global pg_graph
+    async with AsyncPostgresSaver.from_conn_string(DB_URL) as checkpointer:
+        await checkpointer.setup()
+        pg_graph = builder.compile(checkpointer=checkpointer)
+        print("Checkpointer initialised.")
+        yield
+    print("Checkpointer closed.")
+
+# App_______________________________________________
+app = FastAPI(
+    title="Procurement Assistant API",
+    description="Agentic AI procurement assistant - supplier discovery and shipment tracking",
+    version="2.0",
+    lifespan=lifespan
+)
+
+# App_______________________________________________
+app = FastAPI(
+    title="Procurement Assistant API",
+    description="Agentic AI procurement assistant - supplier discovery and shipment tracking",
+    version="2.0",
+    lifespan=lifespan
+)
+
+# Health Check______________________________________
 @app.get("/")
 async def health_check():
-    return{
+    return {
         "status": "running",
         "agent": "Procurement Assistant v2.0",
-        "endpoints": ["/chat","/history/{thread_id}"]
+        "endpoints": ["/chat", "/history/{thread_id}"]
     }
 
-#Request /Response Models____________________________
+# Request/Response Models___________________________
 class ChatRequest(BaseModel):
     message: str
     thread_id: Optional[str] = "default"
@@ -33,17 +72,16 @@ class ChatResponse(BaseModel):
     thread_id: str
     messages_in_history: int
 
-# Chat Endpoint______________________________________
+# Chat Endpoint_____________________________________
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        result = await graph.ainvoke(
+        result = await pg_graph.ainvoke(
             {
                 "user_message": request.message,
                 "intent": None,
                 "tool_result": None,
                 "final_response": None
-
             },
             config={"configurable": {"thread_id": request.thread_id}}
         )
@@ -56,27 +94,27 @@ async def chat(request: ChatRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
-    
-#__History Endpoint ______________________________________
+
+# History Endpoint__________________________________
 @app.get("/history/{thread_id}")
 async def get_history(thread_id: str):
     try:
         config = {"configurable": {"thread_id": thread_id}}
-        state = graph.get_state(config)
+        state = await pg_graph.aget_state(config)
 
         if not state or not state.values:
             raise HTTPException(
                 status_code=404,
                 detail=f"No conversation found for thread_id: {thread_id}"
             )
-        messages = state.values.get("messages",[])
+        messages = state.values.get("messages", [])
 
         if not messages:
             raise HTTPException(
                 status_code=404,
                 detail=f"No messages found for thread_id: {thread_id}"
             )
-        return{
+        return {
             "thread_id": thread_id,
             "message_count": len(messages),
             "messages": messages
