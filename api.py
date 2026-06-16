@@ -15,6 +15,14 @@ app = FastAPI(
     description="Agentic AI procurement assistant - supplier discovery and shipment tracking",
     version="2.0"
 )
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 from contextlib import asynccontextmanager
 
