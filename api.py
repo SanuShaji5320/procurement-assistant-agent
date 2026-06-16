@@ -17,9 +17,16 @@ app = FastAPI(
 )
 from fastapi.middleware.cors import CORSMiddleware
 
+app = FastAPI()
+
+origins = [
+    "https://sanushaji5320.github.io",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -43,21 +50,6 @@ async def lifespan(app: FastAPI):
         yield
     print("Checkpointer closed.")
 
-# App_______________________________________________
-app = FastAPI(
-    title="Procurement Assistant API",
-    description="Agentic AI procurement assistant - supplier discovery and shipment tracking",
-    version="2.0",
-    lifespan=lifespan
-)
-
-# App_______________________________________________
-app = FastAPI(
-    title="Procurement Assistant API",
-    description="Agentic AI procurement assistant - supplier discovery and shipment tracking",
-    version="2.0",
-    lifespan=lifespan
-)
 
 # Health Check______________________________________
 @app.get("/")
