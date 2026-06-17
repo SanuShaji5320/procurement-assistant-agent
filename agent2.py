@@ -10,6 +10,8 @@ load_dotenv()
 DB_URL = os.getenv("DATABASE_URL", "")
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+if "sslmode" not in DB_URL:
+    DB_URL += ("&" if "?" in DB_URL else "?") + "sslmode=prefer"
 
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver

@@ -33,9 +33,7 @@ app.add_middleware(
 
 from contextlib import asynccontextmanager
 
-DB_URL = os.getenv("DATABASE_URL", "")
-if DB_URL.startswith("postgres://"):
-    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+from agent2 import DB_URL
 
 # Global graph reference____________________________
 pg_graph = None
@@ -43,12 +41,15 @@ pg_graph = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global pg_graph
-    async with AsyncPostgresSaver.from_conn_string(DB_URL) as checkpointer:
-        await checkpointer.setup()
-        pg_graph = builder.compile(checkpointer=checkpointer)
-        print("Checkpointer initialised.")
-        yield
-    print("Checkpointer closed.")
+    try:
+        async with AsyncPostgresSaver.from_conn_string(DB_URL) as checkpointer:
+            await checkpointer.setup()
+            pg_graph = builder.compile(checkpointer=checkpointer)
+            print("✅ pg_graph initialized successfully")
+            yield
+    except Exception as e:
+        print(f"❌ LIFESPAN STARTUP FAILED: {e}")
+        raise
 
 
 # Health Check______________________________________
