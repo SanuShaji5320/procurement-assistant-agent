@@ -42,13 +42,15 @@ async def route_intent(state: AgentState) -> dict:
     classification_prompt = f"""You are an intent classifier for a procurement assistant.
 Classify the user message into exactly one of these intents:
 
-- find_supplier: user wants to find, discover, or get recommendations for suppliers or vendors
-- check_shipment: user wants to track, check status, or get updates on a shipment or order
-- follow_up: user is asking a follow-up question related to previous conversation
-- unknown: message doesn't relate to suppliers or shipments
+- find_supplier: user explicitly asks to find, discover, or get NEW recommendations for suppliers or vendors (e.g. mentions a category like cold chain, freight, last mile, or says "find me a supplier")
+- check_shipment: user wants to track, check status, or get updates on a shipment or order, usually with an order ID
+- follow_up: user is referencing something from earlier in the conversation (e.g. "its rating", "that supplier", "the second one") — use this whenever the message depends on prior context to make sense
+- unknown: message doesn't clearly relate to suppliers or shipments, OR it references prior context but there is no conversation history to refer to
 
 User message: "{message}"
 Has conversation history: {has_history}
+
+IMPORTANT: If the message references something ("it", "that", "the second one", "its rating") and Has conversation history is False, classify as unknown — do NOT guess find_supplier or check_shipment just because no other category fits.
 
 Reply with only one word — the intent label. Nothing else."""
 
@@ -56,13 +58,15 @@ Reply with only one word — the intent label. Nothing else."""
         response = await llm.ainvoke([HumanMessage(content=classification_prompt)])
         intent = response.content.strip().lower()
 
-        # Validate — fallback if LLM returns unexpected value
         valid_intents = {"find_supplier", "check_shipment", "follow_up", "unknown"}
         if intent not in valid_intents:
             intent = "follow_up" if has_history else "unknown"
 
+        # Safety net: follow_up only makes sense with real history
+        if intent == "follow_up" and not has_history:
+            intent = "unknown"
+
     except Exception:
-        # If LLM call fails, fall back to keyword matching
         msg = message.lower()
         if "supplier" in msg or "vendor" in msg:
             intent = "find_supplier"
@@ -89,8 +93,11 @@ async def find_supplier_node(state: AgentState) -> dict:
     elif "last mile" in message or "last_mile" in message:
         category = "last_mile"
     else:
-        category = "cold_chain"
-    
+        return {"tool_result": {
+            "status": "needs_clarification",
+            "message": "Which category are you looking for — cold chain, freight, or last mile?"
+        }}
+
     try:
         suppliers = get_suppliers_by_category(category)
         if suppliers:
